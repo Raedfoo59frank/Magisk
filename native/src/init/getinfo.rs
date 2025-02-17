@@ -1,5 +1,5 @@
-use crate::ffi::{BootConfig, MagiskInit};
-use base::{cstr, debug, BytesExt, FsPath, MappedFile, Utf8CStr};
+use crate::ffi::{backup_init, BootConfig, MagiskInit};
+use base::{debug, path, BytesExt, MappedFile};
 use std::ffi::CStr;
 
 impl BootConfig {
@@ -27,12 +27,14 @@ impl BootConfig {
 
 impl MagiskInit {
     pub(crate) fn check_two_stage(&self) -> bool {
-        FsPath::from(cstr!("/first_stage_ramdisk")).exists() ||
-            FsPath::from(cstr!("/second_stage_resources")).exists() ||
-            FsPath::from(cstr!("/system/bin/init")).exists() ||
+        path!("/first_stage_ramdisk").exists() ||
+            path!("/second_stage_resources").exists() ||
+            path!("/system/bin/init").exists() ||
             // Use the apex folder to determine whether 2SI (Android 10+)
-            FsPath::from(cstr!("/apex")).exists() ||
+            path!("/apex").exists() ||
             // If we still have no indication, parse the original init and see what's up
-            MappedFile::open(unsafe { Utf8CStr::from_ptr_unchecked(self.backup_init()) }).map(|map| map.contains(b"selinux_setup")).unwrap_or(false)
+            MappedFile::open(backup_init())
+                .map(|data| data.contains(b"selinux_setup"))
+                .unwrap_or(false)
     }
 }

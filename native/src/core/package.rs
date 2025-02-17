@@ -4,8 +4,8 @@ use crate::ffi::{get_magisk_tmp, install_apk, uninstall_pkg, DbEntryKey};
 use base::libc::{O_CLOEXEC, O_CREAT, O_RDONLY, O_TRUNC, O_WRONLY};
 use base::WalkResult::{Abort, Continue, Skip};
 use base::{
-    cstr, error, fd_get_attr, open_fd, warn, BufReadExt, Directory, FsPath, FsPathBuf,
-    LoggedResult, ReadExt, ResultExt, Utf8CStrBuf, Utf8CStrBufArr,
+    cstr, cstr_buf, error, fd_get_attr, open_fd, warn, BufReadExt, Directory, FsPath, FsPathBuf,
+    LoggedResult, ReadExt, ResultExt, Utf8CStrBuf,
 };
 use bit_set::BitSet;
 use cxx::CxxString;
@@ -239,8 +239,7 @@ impl TrackedFile {
 
 impl ManagerInfo {
     fn check_dyn(&mut self, daemon: &MagiskD, user: i32, pkg: &str) -> Status {
-        let mut arr = Utf8CStrBufArr::default();
-        let apk = FsPathBuf::new(&mut arr)
+        let apk = FsPathBuf::default()
             .join(daemon.app_data_dir())
             .join_fmt(user)
             .join(pkg)
@@ -274,7 +273,7 @@ impl ManagerInfo {
     }
 
     fn check_stub(&mut self, user: i32, pkg: &str) -> Status {
-        let mut arr = Utf8CStrBufArr::default();
+        let mut arr = cstr_buf::default();
         if find_apk_path(pkg, &mut arr).is_err() {
             return Status::NotInstalled;
         }
@@ -299,7 +298,7 @@ impl ManagerInfo {
     }
 
     fn check_orig(&mut self, user: i32) -> Status {
-        let mut arr = Utf8CStrBufArr::default();
+        let mut arr = cstr_buf::default();
         if find_apk_path(APP_PACKAGE_NAME, &mut arr).is_err() {
             return Status::NotInstalled;
         }
@@ -444,8 +443,7 @@ impl ManagerInfo {
 
 impl MagiskD {
     fn get_package_uid(&self, user: i32, pkg: &str) -> i32 {
-        let mut arr = Utf8CStrBufArr::default();
-        let path = FsPathBuf::new(&mut arr)
+        let path = FsPathBuf::default()
             .join(self.app_data_dir())
             .join_fmt(user)
             .join(pkg);
@@ -457,10 +455,7 @@ impl MagiskD {
     pub fn preserve_stub_apk(&self) {
         let mut info = self.manager_info.lock().unwrap();
 
-        let mut arr = Utf8CStrBufArr::default();
-        let apk = FsPathBuf::new(&mut arr)
-            .join(get_magisk_tmp())
-            .join("stub.apk");
+        let apk = FsPathBuf::default().join(get_magisk_tmp()).join("stub.apk");
 
         if let Ok(mut fd) = apk.open(O_RDONLY | O_CLOEXEC) {
             info.trusted_cert = read_certificate(&mut fd, MAGISK_VER_CODE);

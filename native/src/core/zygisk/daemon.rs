@@ -6,8 +6,8 @@ use crate::ffi::{
 use crate::socket::{IpcRead, UnixSocketExt};
 use base::libc::{O_CLOEXEC, O_CREAT, O_RDONLY, STDOUT_FILENO};
 use base::{
-    cstr, error, fork_dont_care, libc, open_fd, raw_cstr, warn, Directory, FsPathBuf, LoggedError,
-    LoggedResult, ResultExt, Utf8CStrBufArr, WriteExt,
+    cstr, cstr_buf, error, fork_dont_care, libc, open_fd, raw_cstr, warn, Directory, FsPathBuf,
+    LoggedError, LoggedResult, ResultExt, WriteExt,
 };
 use std::fmt::Write;
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
@@ -30,7 +30,6 @@ fn exec_zygiskd(is_64_bit: bool, remote: UnixStream) {
     }
 
     // Start building the exec arguments
-    let mut exe = Utf8CStrBufArr::<64>::new();
 
     #[cfg(target_pointer_width = "64")]
     let magisk = if is_64_bit { "magisk" } else { "magisk32" };
@@ -38,9 +37,9 @@ fn exec_zygiskd(is_64_bit: bool, remote: UnixStream) {
     #[cfg(target_pointer_width = "32")]
     let magisk = "magisk";
 
-    let exe = FsPathBuf::new(&mut exe).join(get_magisk_tmp()).join(magisk);
+    let exe = FsPathBuf::<64>::new().join(get_magisk_tmp()).join(magisk);
 
-    let mut fd_str = Utf8CStrBufArr::<16>::new();
+    let mut fd_str = cstr_buf::new::<16>();
     write!(fd_str, "{}", remote.as_raw_fd()).ok();
     unsafe {
         libc::execl(
@@ -184,8 +183,7 @@ impl MagiskD {
         let failed_ids: Vec<i32> = client.read_decodable()?;
         if let Some(module_list) = self.module_list.get() {
             for id in failed_ids {
-                let mut buf = Utf8CStrBufArr::default();
-                let path = FsPathBuf::new(&mut buf)
+                let path = FsPathBuf::default()
                     .join(MODULEROOT)
                     .join(&module_list[id as usize].name)
                     .join("zygisk");
@@ -204,8 +202,7 @@ impl MagiskD {
     fn get_mod_dir(&self, mut client: UnixStream) -> LoggedResult<()> {
         let id: i32 = client.read_decodable()?;
         let module = &self.module_list.get().unwrap()[id as usize];
-        let mut buf = Utf8CStrBufArr::default();
-        let dir = FsPathBuf::new(&mut buf).join(MODULEROOT).join(&module.name);
+        let dir = FsPathBuf::default().join(MODULEROOT).join(&module.name);
         let fd = open_fd!(&dir, O_RDONLY | O_CLOEXEC)?;
         client.send_fds(&[fd.as_raw_fd()])?;
         Ok(())

@@ -1,7 +1,7 @@
 use crate::cxx_extern::readlinkat_for_cxx;
 use crate::{
-    cstr, errno, error, FsPath, FsPathBuf, LibcReturn, Utf8CStr, Utf8CStrBuf, Utf8CStrBufArr,
-    Utf8CStrWrite,
+    cstr, cstr_buf, errno, error, FsPath, FsPathBuf, LibcReturn, Utf8CStr, Utf8CStrBuf,
+    Utf8CStrBufArr,
 };
 use bytemuck::{bytes_of, bytes_of_mut, Pod};
 use libc::{
@@ -39,8 +39,7 @@ macro_rules! open_fd {
 }
 
 pub fn fd_path(fd: RawFd, buf: &mut dyn Utf8CStrBuf) -> io::Result<()> {
-    let mut arr = Utf8CStrBufArr::<40>::new();
-    let path = FsPathBuf::new(&mut arr).join("/proc/self/fd").join_fmt(fd);
+    let path = FsPathBuf::default().join("/proc/self/fd").join_fmt(fd);
     path.read_link(buf)
 }
 
@@ -286,13 +285,13 @@ impl DirEntry<'_> {
     }
 
     pub fn get_attr(&self) -> io::Result<FileAttr> {
-        let mut path = Utf8CStrBufArr::default();
+        let mut path = cstr_buf::default();
         self.path(&mut path)?;
         FsPath::from(&path).get_attr()
     }
 
     pub fn set_attr(&self, attr: &FileAttr) -> io::Result<()> {
-        let mut path = Utf8CStrBufArr::default();
+        let mut path = cstr_buf::default();
         self.path(&mut path)?;
         FsPath::from(&path).set_attr(attr)
     }
@@ -433,7 +432,7 @@ impl Directory {
                 std::io::copy(&mut src, &mut dest)?;
                 fd_set_attr(dest.as_raw_fd(), &attr)?;
             } else if e.is_symlink() {
-                let mut path = Utf8CStrBufArr::default();
+                let mut path = cstr_buf::default();
                 e.read_link(&mut path)?;
                 unsafe {
                     libc::symlinkat(path.as_ptr(), dir.as_raw_fd(), e.d_name.as_ptr())
@@ -618,13 +617,14 @@ impl FsPath {
         self.remove()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn read_link(&self, buf: &mut dyn Utf8CStrBuf) -> io::Result<()> {
         buf.clear();
         unsafe {
             let r = libc::readlink(self.as_ptr(), buf.as_mut_ptr().cast(), buf.capacity() - 1)
-                .check_os_err()? as usize;
-            *buf.mut_buf().get_unchecked_mut(r) = b'\0';
-            buf.set_len(r);
+                .check_os_err()? as isize;
+            *(buf.as_mut_ptr().offset(r) as *mut u8) = b'\0';
+            buf.set_len(r as usize);
         }
         Ok(())
     }
@@ -646,7 +646,7 @@ impl FsPath {
         if self.is_empty() {
             return Ok(());
         }
-        let mut arr = Utf8CStrBufArr::default();
+        let mut arr = cstr_buf::default();
         arr.push_str(self);
         let mut off = 1;
         unsafe {
@@ -749,7 +749,7 @@ impl FsPath {
                 let mut dest = path.create(O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o777)?;
                 std::io::copy(&mut src, &mut dest)?;
             } else if attr.is_symlink() {
-                let mut buf = Utf8CStrBufArr::default();
+                let mut buf = cstr_buf::default();
                 self.read_link(&mut buf)?;
                 unsafe {
                     libc::symlink(buf.as_ptr(), path.as_ptr()).as_os_err()?;
@@ -791,7 +791,7 @@ impl FsPath {
         unsafe { libc::symlink(self.as_ptr(), path.as_ptr()).as_os_err() }
     }
 
-    pub fn parent(&self, buf: &mut dyn Utf8CStrWrite) -> bool {
+    pub fn parent(&self, buf: &mut dyn Utf8CStrBuf) -> bool {
         buf.clear();
         if let Some(parent) = Path::new(self.as_str()).parent() {
             let bytes = parent.as_os_str().as_bytes();
